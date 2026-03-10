@@ -100,8 +100,14 @@ OnCharFn(ih, char) {
                 SetTimer(ClearIgnoreEnter, -500) ; disable flag after 500ms
                 
                 ; To replace the barcode:
-                ; We erase the 14 characters that the scanner just naturally typed
-                SendInput("{Backspace 14}")
+                ; We wait slightly for the app to register the scanner's last digits
+                Sleep(30)
+                
+                ; We erase the 14 characters, slightly delaying to prevent the browser/app from missing them
+                SetKeyDelay(10, 10)
+                SendEvent("{Backspace 14}")
+                Sleep(30)
+                
                 ; Envia os 3 dígitos correspondentes e o Enter de forma explícita
                 SendEvent("RASPA-" . prefix . "{Enter}")
                 
