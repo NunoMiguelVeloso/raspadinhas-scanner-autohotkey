@@ -75,8 +75,10 @@ ih.Start()
 OnCharFn(ih, char) {
     global LastCharTime
     
-    ; Se passou mais de 85ms desde o último caracter, é digitação humana → repassar e reiniciar.
-    if (A_TickCount - LastCharTime > 85) {
+    ; Se já há conteúdo no buffer e passou mais de 85ms → é digitação humana, repassar e reiniciar.
+    ; Nota: ignoramos o timeout para o PRIMEIRO caracter (buffer vazio) para evitar falsos positivos,
+    ; porque LastCharTime começa a 0 e o primeiro caracter seria sempre tratado como humano.
+    if (StrLen(ih.Input) > 1 && A_TickCount - LastCharTime > 85) {
         ; Reenviar os caracteres acumulados até agora (que eram digitação humana)
         buffered := ih.Input
         ih.Stop()
@@ -90,9 +92,8 @@ OnCharFn(ih, char) {
     LastCharTime := A_TickCount
 }
 
-OnEndFn(ih) {
+OnEndFn(ih, reason, endKey) {
     captured := ih.Input
-    reason   := ih.EndReason
     
     ; Reiniciar o hook imediatamente para não perder inputs seguintes
     ih.Start()
