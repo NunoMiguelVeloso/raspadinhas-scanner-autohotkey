@@ -90,8 +90,9 @@ OnCharFn(ih, char) {
     LastCharTime := A_TickCount
 }
 
-OnEndFn(ih, reason, endKey) {
+OnEndFn(ih) {
     captured := ih.Input
+    reason   := ih.EndReason
     
     ; Reiniciar o hook imediatamente para não perder inputs seguintes
     ih.Start()
