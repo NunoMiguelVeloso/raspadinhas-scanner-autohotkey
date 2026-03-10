@@ -103,7 +103,7 @@ OnCharFn(ih, char) {
                 ; We erase the 14 characters that the scanner just naturally typed
                 SendInput("{Backspace 14}")
                 ; Envia os 3 dígitos correspondentes e o Enter de forma explícita
-                SendEvent("RASPA-"prefix "{Enter}")
+                SendEvent("RASPA-" prefix "{Enter}")
                 
                 ; Show a push notification (TrayTip)
                 TrayTip("Raspadinha Identificada", "Código " prefix " detetado e substituído.", 1)
