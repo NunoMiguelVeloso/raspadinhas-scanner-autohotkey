@@ -64,6 +64,7 @@ AtualizarLista(isStartup) {
 
 global BarcodeBuf := ""
 global LastCharTime := 0
+global IgnoreNextEnter := false
 
 ; Create a visible InputHook. "V" means keystrokes are passed to the active window normally.
 ih := InputHook("V")
@@ -74,9 +75,9 @@ OnCharFn(ih, char) {
     global BarcodeBuf, LastCharTime
     
     ; Barcode scanners send keystrokes extremely quickly (usually 5-20ms per character).
-    ; If the time since the last keystroke is > 50ms, it is likely human typing.
-    ; We reset the buffer to prevent normal typing from triggering the replacement.
-    if (A_TickCount - LastCharTime > 50) {
+    ; Se o tempo desde a última tecla for maior que 85ms, provavelmente é digitação humana.
+    ; Tolerância aumentada para evitar falhas com leitores de código de barras mais lentos.
+    if (A_TickCount - LastCharTime > 85) {
         BarcodeBuf := ""
     }
     LastCharTime := A_TickCount
@@ -94,12 +95,15 @@ OnCharFn(ih, char) {
             ; Check if the 3 digits belong to our list
             if (RaspadinhasMap.Has(prefix)) {
                 
+                ; Enable a flag to absorb the natural Enter keystroke from the scanner
+                global IgnoreNextEnter := true
+                SetTimer(ClearIgnoreEnter, -500) ; disable flag after 500ms
+                
                 ; To replace the barcode:
                 ; We erase the 14 characters that the scanner just naturally typed
                 SendInput("{Backspace 14}")
-                
-                ; Send only the 3 matching digits
-                SendInput(prefix)
+                ; Envia os 3 dígitos correspondentes e o Enter de forma explícita
+                SendEvent("RASPA-"prefix "{Enter}")
                 
                 ; Show a push notification (TrayTip)
                 TrayTip("Raspadinha Identificada", "Código " prefix " detetado e substituído.", 1)
@@ -115,3 +119,16 @@ OnCharFn(ih, char) {
         BarcodeBuf := ""
     }
 }
+
+ClearIgnoreEnter() {
+    global IgnoreNextEnter := false
+}
+
+#HotIf IgnoreNextEnter
+$Enter::
+$NumpadEnter::
+{
+    global IgnoreNextEnter := false
+    ; Absorve o Enter físico do leitor para evitar duplicação do Enter
+}
+#HotIf
