@@ -62,61 +62,88 @@ AtualizarLista(isStartup) {
     }
 }
 
+global BarcodeBuf := ""
 global LastCharTime := 0
+global IgnoreNextEnter := false
 
-; InputHook SEM "V" — os caracteres NÃO chegam à aplicação enquanto estamos a capturar.
-; Termina quando o leitor envia Enter. Timeout de 2s para segurança.
-ih := InputHook("T2")
-ih.KeyOpt("{Enter}{NumpadEnter}", "E")  ; Enter termina o input
+; Create a visible InputHook. "V" means keystrokes are passed to the active window normally.
+ih := InputHook("V")
 ih.OnChar := OnCharFn
-ih.OnEnd := OnEndFn
 ih.Start()
 
 OnCharFn(ih, char) {
-    global LastCharTime
+    global BarcodeBuf, LastCharTime
     
-    ; Se já há conteúdo no buffer e passou mais de 85ms → é digitação humana, repassar e reiniciar.
-    ; Nota: ignoramos o timeout para o PRIMEIRO caracter (buffer vazio) para evitar falsos positivos,
-    ; porque LastCharTime começa a 0 e o primeiro caracter seria sempre tratado como humano.
-    if (StrLen(ih.Input) > 1 && A_TickCount - LastCharTime > 85) {
-        ; Reenviar os caracteres acumulados até agora (que eram digitação humana)
-        buffered := ih.Input
-        ih.Stop()
-        ih.Start()
-        if (buffered != "")
-            SendText(buffered)
-        SendText(char)
-        LastCharTime := A_TickCount
-        return
+    ; Barcode scanners send keystrokes extremely quickly (usually 5-20ms per character).
+    ; Se o tempo desde a última tecla for maior que 85ms, provavelmente é digitação humana.
+    ; Tolerância aumentada para evitar falhas com leitores de código de barras mais lentos.
+    if (A_TickCount - LastCharTime > 85) {
+        BarcodeBuf := ""
     }
     LastCharTime := A_TickCount
+    
+    ; Only append digits to our buffer
+    if IsDigit(char) {
+        BarcodeBuf .= char
+        
+        ; When exactly 14 rapidly typed digits are detected
+        if (StrLen(BarcodeBuf) == 14) {
+            
+            ; Get the first 3 digits (slicing all digits after position 3)
+            prefix := SubStr(BarcodeBuf, 1, 3)
+            
+            ; Check if the 3 digits belong to our list
+            if (RaspadinhasMap.Has(prefix)) {
+                
+                ; Enable a flag to absorb the natural Enter keystroke from the scanner
+                global IgnoreNextEnter := true
+                SetTimer(ClearIgnoreEnter, -500) ; disable flag after 500ms
+                
+                ; Substituição via clipboard (mais seguro que backspaces individuais)
+                ; 1. Guardar o clipboard original
+                oldClip := ClipboardAll()
+                
+                ; 2. Selecionar os 14 caracteres que o leitor acabou de escrever
+                SendEvent("{Left 14}{Shift Down}{Right 14}{Shift Up}")
+                Sleep(30)
+                
+                ; 3. Colocar o texto de substituição no clipboard e colar
+                A_Clipboard := "RASPA-" . prefix
+                SendEvent("^v")
+                Sleep(30)
+                
+                ; 4. Enviar o Enter
+                SendEvent("{Enter}")
+                
+                ; 5. Restaurar o clipboard original
+                Sleep(50)
+                A_Clipboard := oldClip
+                oldClip := ""
+                
+                ; Show a push notification (TrayTip)
+                TrayTip("Raspadinha Identificada", "Código " prefix " detetado e substituído.", 1)
+            }
+            ; If it doesn't match, we do nothing. The "V" InputHook naturally allows
+            ; the original barcode to stay as it was typed.
+            
+            ; Reset buffer after a successful 14-digit detection
+            BarcodeBuf := "" 
+        }
+    } else {
+        ; Reset the buffer if a non-digit is typed (e.g. letters)
+        BarcodeBuf := ""
+    }
 }
 
-OnEndFn(ih, reason, endKey) {
-    captured := ih.Input
-    
-    ; Reiniciar o hook imediatamente para não perder inputs seguintes
-    ih.Start()
-    
-    ; Só processar se terminou via Enter e tem exatamente 14 dígitos
-    if (reason != "EndKey" || !RegExMatch(captured, "^\d{14}$")) {
-        ; Não é um código de barras — repassar o texto original e o Enter
-        if (captured != "")
-            SendText(captured)
-        Send("{Enter}")
-        return
-    }
-    
-    ; Extrair os primeiros 3 dígitos e verificar na lista
-    prefix := SubStr(captured, 1, 3)
-    if (RaspadinhasMap.Has(prefix)) {
-        ; Código reconhecido → enviar "RASPA-" + prefixo + Enter
-        SendText("RASPA-" . prefix)
-        Send("{Enter}")
-        TrayTip("Raspadinha Identificada", "Código " . prefix . " detetado e substituído.", 1)
-    } else {
-        ; Código não reconhecido → repassar o código original e o Enter
-        SendText(captured)
-        Send("{Enter}")
-    }
+ClearIgnoreEnter() {
+    global IgnoreNextEnter := false
 }
+
+#HotIf IgnoreNextEnter
+$Enter::
+$NumpadEnter::
+{
+    global IgnoreNextEnter := false
+    ; Absorve o Enter físico do leitor para evitar duplicação do Enter
+}
+#HotIf
