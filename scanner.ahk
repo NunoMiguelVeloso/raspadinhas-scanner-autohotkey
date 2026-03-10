@@ -62,79 +62,59 @@ AtualizarLista(isStartup) {
     }
 }
 
-global BarcodeBuf := ""
 global LastCharTime := 0
-global IgnoreNextEnter := false
 
-; Create a visible InputHook. "V" means keystrokes are passed to the active window normally.
-ih := InputHook("V")
+; InputHook SEM "V" — os caracteres NÃO chegam à aplicação enquanto estamos a capturar.
+; Termina quando o leitor envia Enter. Timeout de 2s para segurança.
+ih := InputHook("T2")
+ih.KeyOpt("{Enter}{NumpadEnter}", "E")  ; Enter termina o input
 ih.OnChar := OnCharFn
+ih.OnEnd := OnEndFn
 ih.Start()
 
 OnCharFn(ih, char) {
-    global BarcodeBuf, LastCharTime
+    global LastCharTime
     
-    ; Barcode scanners send keystrokes extremely quickly (usually 5-20ms per character).
-    ; Se o tempo desde a última tecla for maior que 85ms, provavelmente é digitação humana.
-    ; Tolerância aumentada para evitar falhas com leitores de código de barras mais lentos.
+    ; Se passou mais de 85ms desde o último caracter, é digitação humana → repassar e reiniciar.
     if (A_TickCount - LastCharTime > 85) {
-        BarcodeBuf := ""
+        ; Reenviar os caracteres acumulados até agora (que eram digitação humana)
+        buffered := ih.Input
+        ih.Stop()
+        ih.Start()
+        if (buffered != "")
+            SendText(buffered)
+        SendText(char)
+        LastCharTime := A_TickCount
+        return
     }
     LastCharTime := A_TickCount
+}
+
+OnEndFn(ih, reason, endKey) {
+    captured := ih.Input
     
-    ; Only append digits to our buffer
-    if IsDigit(char) {
-        BarcodeBuf .= char
-        
-        ; When exactly 14 rapidly typed digits are detected
-        if (StrLen(BarcodeBuf) == 14) {
-            
-            ; Get the first 3 digits (slicing all digits after position 3)
-            prefix := SubStr(BarcodeBuf, 1, 3)
-            
-            ; Check if the 3 digits belong to our list
-            if (RaspadinhasMap.Has(prefix)) {
-                
-                ; Enable a flag to absorb the natural Enter keystroke from the scanner
-                global IgnoreNextEnter := true
-                SetTimer(ClearIgnoreEnter, -500) ; disable flag after 500ms
-                
-                ; To replace the barcode:
-                ; We wait slightly for the app to register the scanner's last digits
-                Sleep(30)
-                
-                ; We erase the 14 characters, slightly delaying to prevent the browser/app from missing them
-                SetKeyDelay(10, 10)
-                SendEvent("{Backspace 14}")
-                Sleep(30)
-                
-                ; Envia os 3 dígitos correspondentes e o Enter de forma explícita
-                SendEvent("RASPA-" . prefix . "{Enter}")
-                
-                ; Show a push notification (TrayTip)
-                TrayTip("Raspadinha Identificada", "Código " prefix " detetado e substituído.", 1)
-            }
-            ; If it doesn't match, we do nothing. The "V" InputHook naturally allows
-            ; the original barcode to stay as it was typed.
-            
-            ; Reset buffer after a successful 14-digit detection
-            BarcodeBuf := "" 
-        }
+    ; Reiniciar o hook imediatamente para não perder inputs seguintes
+    ih.Start()
+    
+    ; Só processar se terminou via Enter e tem exatamente 14 dígitos
+    if (reason != "EndKey" || !RegExMatch(captured, "^\d{14}$")) {
+        ; Não é um código de barras — repassar o texto original e o Enter
+        if (captured != "")
+            SendText(captured)
+        Send("{Enter}")
+        return
+    }
+    
+    ; Extrair os primeiros 3 dígitos e verificar na lista
+    prefix := SubStr(captured, 1, 3)
+    if (RaspadinhasMap.Has(prefix)) {
+        ; Código reconhecido → enviar "RASPA-" + prefixo + Enter
+        SendText("RASPA-" . prefix)
+        Send("{Enter}")
+        TrayTip("Raspadinha Identificada", "Código " . prefix . " detetado e substituído.", 1)
     } else {
-        ; Reset the buffer if a non-digit is typed (e.g. letters)
-        BarcodeBuf := ""
+        ; Código não reconhecido → repassar o código original e o Enter
+        SendText(captured)
+        Send("{Enter}")
     }
 }
-
-ClearIgnoreEnter() {
-    global IgnoreNextEnter := false
-}
-
-#HotIf IgnoreNextEnter
-$Enter::
-$NumpadEnter::
-{
-    global IgnoreNextEnter := false
-    ; Absorve o Enter físico do leitor para evitar duplicação do Enter
-}
-#HotIf
