@@ -2,7 +2,8 @@
 #SingleInstance Force
 
 ; Configurações
-global GitHubUrl := "https://raw.githubusercontent.com/NunoMiguelVeloso/raspadinhas-scanner-autohotkey/main/raspadinhas.txt"
+global GitHubUrl  := "https://raw.githubusercontent.com/NunoMiguelVeloso/raspadinhas-scanner-autohotkey/main/raspadinhas.txt"
+global CacheFile  := A_ScriptDir . "\raspadinhas_cache.txt"
 global RaspadinhasMap := Map()
 
 ; Configurar Menu da Tray (Opção Manual para os Tablets)
@@ -12,8 +13,8 @@ A_TrayMenu.Add("Atualizar Lista Agora", AtualizarListaManual)
 ; Fazer a primeira atualização ao iniciar o script
 AtualizarLista(true)
 
-; Configurar a execução automática a cada 2 horas (7200000 ms)
-SetTimer(AtualizarListaAuto, 7200000)
+; Configurar a execução automática a cada 10 minutos (600000 ms)
+SetTimer(AtualizarListaAuto, 600000)
 
 AtualizarListaManual(ItemName, ItemPos, MyMenu) {
     AtualizarLista(false)
@@ -23,49 +24,75 @@ AtualizarListaAuto() {
     AtualizarLista(false)
 }
 
+; Converte texto da lista para um Map de prefixos
+ParseLista(text) {
+    m := Map()
+    Loop Parse, text, "`n", "`r" {
+        val := RegExReplace(A_LoopField, "\D", "")
+        if (StrLen(val) == 3)
+            m[val] := true
+    }
+    return m
+}
+
 AtualizarLista(isStartup) {
-    global RaspadinhasMap, GitHubUrl
-    try {
-        ; Create a COM object to make the HTTP request
-        req := ComObject("WinHttp.WinHttpRequest.5.1")
-        req.Open("GET", GitHubUrl, true)
-        req.Send()
-        req.WaitForResponse()
-        text := req.ResponseText
-        
-        ; Map temporário para evitar limpar códigos válidos se o ficheiro estiver corrompido
-        tempMap := Map()
-        
-        ; Read the downloaded text line by line
-        Loop Parse, text, "`n", "`r" {
-            val := RegExReplace(A_LoopField, "\D", "")
-            if (StrLen(val) == 3) {
-                tempMap[val] := true
-            }
+    global RaspadinhasMap, GitHubUrl, CacheFile
+
+    maxTentativas := 3          ; número de tentativas
+    pausaEntreTentativas := 3000 ; ms entre tentativas
+    timeoutMs := 5000           ; timeout de ligação/envio/resposta
+
+    Loop maxTentativas {
+        tentativa := A_Index
+        try {
+            ; Tentar descarregar do GitHub com timeout
+            req := ComObject("WinHttp.WinHttpRequest.5.1")
+            req.SetTimeouts(timeoutMs, timeoutMs, timeoutMs, timeoutMs)
+            req.Open("GET", GitHubUrl, true)
+            req.Send()
+            req.WaitForResponse()
+            text := req.ResponseText
+
+            tempMap := ParseLista(text)
+
+            ; Só aceitar se veio conteúdo válido (evita sobrescrever com lista corrompida)
+            if (tempMap.Count == 0)
+                throw Error("Lista vazia ou inválida recebida do GitHub.")
+
+            ; Guardar cache local para uso offline futuro
+            FileDelete(CacheFile)
+            FileAppend(text, CacheFile, "UTF-8")
+
+            RaspadinhasMap := tempMap
+
+            if (!isStartup)
+                TrayTip("Lista Atualizada", "Carregados " . RaspadinhasMap.Count . " códigos (GitHub).", 2)
+
+            return  ; sucesso — sair da função
+        } catch as err {
+            ; Falhou esta tentativa — esperar antes de tentar outra vez (exceto na última)
+            if (tentativa < maxTentativas)
+                Sleep(pausaEntreTentativas)
         }
-        
-        ; Atualizar o map global de forma atómica
-        RaspadinhasMap := tempMap
-        
-        ; Mostrar notificação se foi uma atualização manual ou erro
-        if (!isStartup) {
-            TrayTip("Lista Atualizada", "Foram carregados " RaspadinhasMap.Count " códigos de raspadinhas.", 2)
-        }
-    } catch as err {
-        if (isStartup) {
-            MsgBox("Aviso: Não foi possível transferir a lista do GitHub. Verifique a ligação à internet e o URL.`n`nErro: " err.Message, "Erro", 16)
-            ExitApp()
-        } else {
-            ; Apenas falha silenciosamente ou avisa no background se não for no arranque
-            TrayTip("Erro de Atualização", "Não foi possível atualizar a lista de raspadinhas. A usar a lista antiga.`n" err.Message, 3)
-        }
+    }
+
+    ; Todas as tentativas falharam — tentar carregar do cache local
+    if (FileExist(CacheFile)) {
+        cached := FileRead(CacheFile, "UTF-8")
+        RaspadinhasMap := ParseLista(cached)
+        if (isStartup)
+            TrayTip("Modo Offline", "Sem ligação ao GitHub. A usar cache local (" . RaspadinhasMap.Count . " códigos).", 3)
+        else
+            TrayTip("Erro de Atualização", "A usar cache local (" . RaspadinhasMap.Count . " códigos).", 3)
+    } else {
+        ; Sem cache e sem rede — arrancar com lista vazia (script continua a funcionar)
+        RaspadinhasMap := Map()
+        if (isStartup)
+            TrayTip("Aviso", "Sem ligação e sem cache local. A arrancar sem lista de raspadinhas.", 3)
     }
 }
 
 global ScanStartTime := 0  ; A_TickCount do primeiro dígito do scan atual
-
-; DEBUG: Muda para false para desativar os tooltips de diagnóstico
-global DEBUG := true
 
 ; InputHook com "V" (Visible) — os caracteres aparecem imediatamente na app (bom para digitação humana).
 ; Quando detetamos um scan completo, apagamos os carateres visíveis com Backspace e enviamos o resultado processado.
@@ -85,7 +112,7 @@ OnCharFn(ih, char) {
 }
 
 OnScanComplete(ih) {
-    global ScanStartTime, DEBUG
+    global ScanStartTime
 
     collected  := ih.Input
     elapsed    := A_TickCount - ScanStartTime
@@ -94,15 +121,8 @@ OnScanComplete(ih) {
     ; Reiniciar o hook imediatamente para a próxima entrada
     ih.Start()
 
-    isScan := (StrLen(collected) == 14 && elapsed < 500)
-
-    if (DEBUG) {
-        ToolTip("SCAN: " . (isScan ? "SIM" : "NÃO")
-            . "`nCódigo: [" . collected . "]"
-            . "`nLen: " . StrLen(collected)
-            . "`nElapsed: " . elapsed . "ms")
-        SetTimer(() => ToolTip(), -3000)  ; esconder tooltip após 3s
-    }
+    ; Scan válido: exatamente 14 dígitos (sem letras), recebidos em < 500ms
+    isScan := (StrLen(collected) == 14 && elapsed < 500 && RegExMatch(collected, "^\d+$"))
 
     if (isScan) {
         ; Apagar os caracteres visíveis que já foram enviados (modo V)
