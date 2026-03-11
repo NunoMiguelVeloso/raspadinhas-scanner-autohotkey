@@ -109,8 +109,8 @@ OnKeyDownFn(ih, vk, sc) {
     now := A_TickCount
     timeSinceLast := now - LastCharTime
 
-    ; Se temos um buffer e o Enter veio rápido — é o fim de um scan
-    if (BarcodeBuf != "" && ScanMode && timeSinceLast < 85) {
+    ; Se temos um buffer com 14 dígitos — é definitivamente um scan (independentemente de ScanMode ou timing do Enter)
+    if (BarcodeBuf != "" && StrLen(BarcodeBuf) == 14) {
         SetTimer(FlushBuffer, 0)  ; cancelar timer de flush
 
         ProcessCompleteScan(BarcodeBuf)
@@ -143,7 +143,6 @@ ProcessCompleteScan(barcode) {
     if (RaspadinhasMap.Has(prefix)) {
         ; É raspadinha! Enviar apenas o código transformado
         SendInput("RASPA-" . prefix . "{Enter}")
-        TrayTip("Raspadinha Identificada", "Código " . prefix . " detetado e substituído.", 1)
     } else {
         ; Não é raspadinha — enviar o código de barras original + Enter
         SendInput(barcode . "{Enter}")
