@@ -1,8 +1,6 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 
-TraySetIcon(A_ScriptDir . "\scanner.ico")
-
 ; --- Configurações ---
 global GitHubUrl  := "https://raw.githubusercontent.com/NunoMiguelVeloso/raspadinhas-scanner-autohotkey/main/raspadinhas.txt"
 global CacheFile  := A_ScriptDir . "\raspadinhas_cache.txt"
