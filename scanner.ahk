@@ -175,6 +175,6 @@ ProcessCompleteScan(barcode) {
     }
 }
 
-DebugLog(msg) {s
+DebugLog(msg) {
     FileAppend(FormatTime(, "yyyy-MM-dd HH:mm:ss") . " - " . msg . "`n", A_ScriptDir . "\debug.log")
 }
