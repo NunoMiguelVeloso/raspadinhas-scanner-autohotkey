@@ -1,57 +1,46 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 
-; Configurações
+; ─── Configurações ────────────────────────────────────────────────────────────
 global GitHubUrl  := "https://raw.githubusercontent.com/NunoMiguelVeloso/raspadinhas-scanner-autohotkey/main/raspadinhas.txt"
 global CacheFile  := A_ScriptDir . "\raspadinhas_cache.txt"
-global LogFile    := A_ScriptDir . "\raspadinhas_debug.log"
 global RaspadinhasMap := Map()
 
-; ─── Debug ────────────────────────────────────────────────────────────────────
-DebugLog(msg) {
-    global LogFile
-    timestamp := FormatTime(, "yyyy-MM-dd HH:mm:ss")
-    FileAppend("[" . timestamp . "] " . msg . "`n", LogFile, "UTF-8")
-}
-
-; ─── Tray Menu ────────────────────────────────────────────────────────────────
-A_TrayMenu.Add()
+; ─── Menu da Tray ─────────────────────────────────────────────────────────────
+A_TrayMenu.Add()  ; Separador visual
+A_TrayMenu.Add("Ver Estado da Lista", MostrarEstado)
 A_TrayMenu.Add("Atualizar Lista Agora", AtualizarListaManual)
-A_TrayMenu.Add("Abrir Log de Debug", AbrirLog)
 
-AbrirLog(ItemName, ItemPos, MyMenu) {
-    global LogFile
-    if FileExist(LogFile)
-        Run("notepad.exe " . LogFile)
-    else
-        MsgBox("Ficheiro de log não encontrado: " . LogFile, "Debug", 48)
+MostrarEstado(ItemName, ItemPos, MyMenu) {
+    global RaspadinhasMap, CacheFile
+    
+    if FileExist(CacheFile) {
+        time := FileGetTime(CacheFile, "M") ; Tempo de modificação
+        cacheStatus := "Sim (" . FileGetSize(CacheFile) . " bytes, atualizado a " . FormatTime(time, "dd/MM/yyyy HH:mm") . ")"
+    } else {
+        cacheStatus := "Não existe"
+    }
+    
+    msg := "ESTADO DO SCANNER`n`n"
+    msg .= "Códigos em memória: " . RaspadinhasMap.Count . "`n"
+    msg .= "Cache local: " . cacheStatus
+    
+    MsgBox(msg, "Estado do Scanner", 64)
 }
 
-; ─── Arranque ─────────────────────────────────────────────────────────────────
-DebugLog("=== Script iniciado. AHK: " . A_AhkVersion . " | Script: " . A_ScriptFullPath)
-DebugLog("GitHubUrl: " . GitHubUrl)
-DebugLog("CacheFile: " . CacheFile . " | Existe: " . (FileExist(CacheFile) ? "SIM" : "NÃO"))
+; ─── Arranque e Atualização Automática ────────────────────────────────────────
+AtualizarLista(true)  ; Atualização inicial no arranque (silenciosa se sucesso)
+SetTimer(AtualizarListaAuto, 600000)  ; 10 minutos (600000 ms)
 
-AtualizarLista(true)
-
-; Mostrar resultado de arranque em MsgBox para debug
-MsgBox("Arranque concluído.`n`nCódigos carregados: " . RaspadinhasMap.Count
-    . "`nCache existe: " . (FileExist(CacheFile) ? "SIM" : "NÃO")
-    . "`n`nDetalhes em:`n" . LogFile,
-    "Raspadinhas Scanner - Debug", 64)
-
-; Configurar a execução automática a cada 10 minutos (600000 ms)
-SetTimer(AtualizarListaAuto, 600000)
-
-; ─── Atualização da lista ─────────────────────────────────────────────────────
 AtualizarListaManual(ItemName, ItemPos, MyMenu) {
     AtualizarLista(false)
 }
 
 AtualizarListaAuto() {
-    AtualizarLista(false)
+    AtualizarLista(true) ; Auto updates também devem ser silenciosos (tratados como startup)
 }
 
+; ─── Lógica de Download e Cache ───────────────────────────────────────────────
 ParseLista(text) {
     m := Map()
     Loop Parse, text, "`n", "`r" {
@@ -62,7 +51,7 @@ ParseLista(text) {
     return m
 }
 
-AtualizarLista(isStartup) {
+AtualizarLista(isSilent) {
     global RaspadinhasMap, GitHubUrl, CacheFile
 
     maxTentativas := 3
@@ -70,89 +59,70 @@ AtualizarLista(isStartup) {
     timeoutMs := 10000
     lastErr := ""
 
+    if (!isSilent)
+        TrayTip("Atualização", "A transferir lista do GitHub...", 1)
+
     Loop maxTentativas {
         tentativa := A_Index
-        DebugLog("HTTP tentativa " . tentativa . "/" . maxTentativas . " — URL: " . GitHubUrl)
-        TrayTip("🔄 Lista [" . tentativa . "/" . maxTentativas . "]", "A ligar ao GitHub...", 1)
-
         try {
             req := ComObject("WinHttp.WinHttpRequest.5.1")
             req.SetTimeouts(timeoutMs, timeoutMs, timeoutMs, timeoutMs)
-            DebugLog("  ComObject criado. SetTimeouts: " . timeoutMs . "ms")
-
-            req.Open("GET", GitHubUrl, false)
-            DebugLog("  Open() OK")
-
+            req.Open("GET", GitHubUrl, false) ; Síncrono
             req.Send()
-            DebugLog("  Send() OK — Status HTTP: " . req.Status . " " . req.StatusText)
-            TrayTip("🔄 Lista [" . tentativa . "/" . maxTentativas . "]", "Resposta: HTTP " . req.Status . " — " . StrLen(req.ResponseText) . " bytes", 1)
-
-            text := req.ResponseText
-            DebugLog("  ResponseText: " . StrLen(text) . " bytes | Primeiros 80: [" . SubStr(text, 1, 80) . "]")
-
+            
             if (req.Status != 200)
                 throw Error("HTTP " . req.Status . " " . req.StatusText)
 
-            tempMap := ParseLista(text)
-            DebugLog("  ParseLista: " . tempMap.Count . " códigos encontrados")
-            TrayTip("🔄 Lista [" . tentativa . "/" . maxTentativas . "]", "Códigos encontrados: " . tempMap.Count, 1)
+            tempMap := ParseLista(req.ResponseText)
 
             if (tempMap.Count == 0)
-                throw Error("Lista vazia (0 códigos de 3 dígitos encontrados).")
+                throw Error("Lista vazia ou inválida.")
 
+            ; Guardar num ficheiro local para uso offline futuro
             if FileExist(CacheFile)
                 FileDelete(CacheFile)
-            FileAppend(text, CacheFile, "UTF-8")
-            DebugLog("  Cache guardado: " . CacheFile)
+            FileAppend(req.ResponseText, CacheFile, "UTF-8")
 
             RaspadinhasMap := tempMap
-            DebugLog("  SUCESSO: " . RaspadinhasMap.Count . " códigos carregados do GitHub.")
 
-            if (!isStartup)
+            if (!isSilent)
                 TrayTip("Lista Atualizada", "Carregados " . RaspadinhasMap.Count . " códigos (GitHub).", 2)
 
-            return
+            return ; Sucesso — sair da função
         } catch as err {
             lastErr := err.Message
-            DebugLog("  ERRO na tentativa " . tentativa . ": " . lastErr)
-            TrayTip("❌ Erro [" . tentativa . "/" . maxTentativas . "]", lastErr, 2)
-            if (tentativa < maxTentativas) {
-                DebugLog("  A aguardar " . pausaEntreTentativas . "ms antes de tentar novamente...")
+            if (tentativa < maxTentativas)
                 Sleep(pausaEntreTentativas)
-            }
         }
     }
 
-    ; Todas as tentativas falharam
-    DebugLog("Todas as tentativas falharam. Último erro: " . lastErr)
+    ; --- Fallback: Se todas as tentativas de rede falharem ---
     if (FileExist(CacheFile)) {
         cached := FileRead(CacheFile, "UTF-8")
         RaspadinhasMap := ParseLista(cached)
-        DebugLog("Cache local carregado: " . RaspadinhasMap.Count . " códigos.")
-        if (isStartup)
-            TrayTip("Modo Offline", "Cache local: " . RaspadinhasMap.Count . " códigos.`nErro: " . lastErr, 3)
-        else
-            TrayTip("Erro de Atualização", "Cache local: " . RaspadinhasMap.Count . " códigos.`nErro: " . lastErr, 3)
+        
+        if (!isSilent)
+            TrayTip("Atualização Falhou", "Sem rede. A usar cache local (" . RaspadinhasMap.Count . " códigos).`n`nErro original: " . lastErr, 3)
     } else {
         RaspadinhasMap := Map()
-        DebugLog("Sem cache local. A arrancar sem lista.")
-        if (isStartup)
-            TrayTip("Aviso", "Sem cache local.`nErro: " . lastErr, 3)
+        TrayTip("ALERTA CRÍTICO", "Falha de rede e sem cache local. O scanner não tem a lista de raspadinhas.`n`nErro: " . lastErr, 3)
     }
 }
 
-; ─── Scanner ──────────────────────────────────────────────────────────────────
+; ─── Scanner (InputHook) ──────────────────────────────────────────────────────
 global ScanStartTime := 0
 
+; Modo "V" (Visible): caracteres passam para a app normalmente (digitação humana imediata)
+; Quando um scan de 14 dígitos é detetado, apagamos os 14 visíveis (Backspace) e injetamos o código processado.
 ih := InputHook("V")
-ih.KeyOpt("{Enter}", "SE")
+ih.KeyOpt("{Enter}", "SE") ; Enter funciona como demilitador suprimido (nunca é enviado diretamente)
 ih.OnEnd := OnScanComplete
 ih.OnChar := OnCharFn
 ih.Start()
-DebugLog("InputHook iniciado.")
 
 OnCharFn(ih, char) {
     global ScanStartTime
+    ; Registar a hora inicial (OnChar corre depois de a tecla entrar no buffer)
     if (StrLen(ih.Input) == 1)
         ScanStartTime := A_TickCount
 }
@@ -160,21 +130,22 @@ OnCharFn(ih, char) {
 OnScanComplete(ih) {
     global ScanStartTime
 
-    collected := ih.Input
-    elapsed   := A_TickCount - ScanStartTime
+    collected  := ih.Input
+    elapsed    := A_TickCount - ScanStartTime
     ScanStartTime := 0
 
+    ; Reinicia imediatamente para a próxima leitura
     ih.Start()
 
+    ; Um leitor de código de barras envia os 14 números sem letras num tempo incrivelmente rápido (< 500ms)
     isScan := (StrLen(collected) == 14 && elapsed < 500 && RegExMatch(collected, "^\d+$"))
 
-    DebugLog("Enter | Input=[" . collected . "] Len=" . StrLen(collected)
-        . " Elapsed=" . elapsed . "ms isScan=" . (isScan ? "SIM" : "NÃO"))
-
     if (isScan) {
+        ; Apagar da app os 14 caracteres que apareceram visíveis pelo modo "V"
         SendInput("{BS " . StrLen(collected) . "}")
         ProcessCompleteScan(collected)
     } else {
+        ; Entrada manual finalizada. Os caracteres já estão visíveis na app, precisamos apenas do Enter que foi suprimido.
         SendInput("{Enter}")
     }
 }
@@ -182,8 +153,8 @@ OnScanComplete(ih) {
 ProcessCompleteScan(barcode) {
     global RaspadinhasMap
 
+    ; Segurança passiva - confirmar o tamanho
     if (StrLen(barcode) != 14) {
-        DebugLog("ProcessCompleteScan: len inválido (" . StrLen(barcode) . ") — a enviar tal qual")
         SendInput(barcode . "{Enter}")
         return
     }
@@ -191,10 +162,10 @@ ProcessCompleteScan(barcode) {
     prefix := SubStr(barcode, 1, 3)
 
     if (RaspadinhasMap.Has(prefix)) {
-        DebugLog("Raspadinha! Barcode=" . barcode . " Prefix=" . prefix . " → RASPA-" . prefix)
+        ; Confirmação sonora audível de sucesso (breve e aguda) - estilo caixa de supermercado
+        SoundBeep(1200, 50) 
         SendInput("RASPA-" . prefix . "{Enter}")
     } else {
-        DebugLog("Não raspadinha. Barcode=" . barcode . " Prefix=" . prefix . " (não na lista, total=" . RaspadinhasMap.Count . ")")
         SendInput(barcode . "{Enter}")
     }
 }
