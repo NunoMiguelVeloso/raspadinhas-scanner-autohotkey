@@ -139,6 +139,8 @@ OnScanComplete(ih) {
 
     ; Um leitor de código de barras envia os 10 números sem letras num tempo incrivelmente rápido (< 500ms)
     isScan := (StrLen(collected) == 10 && elapsed < 500 && RegExMatch(collected, "^\d+$"))
+    
+    DebugLog("OnScanComplete - Input: '" . collected . "', Length: " . StrLen(collected) . ", Elapsed: " . elapsed . "ms, isScan: " . (isScan ? "true" : "false"))
 
     if (isScan) {
         ; Apagar da app os 10 caracteres que apareceram visíveis pelo modo "V"
@@ -160,12 +162,19 @@ ProcessCompleteScan(barcode) {
     }
 
     prefix := SubStr(barcode, 1, 3)
+    hasPrefix := RaspadinhasMap.Has(prefix)
+    
+    DebugLog("ProcessCompleteScan - Barcode: '" . barcode . "', Prefix: '" . prefix . "', In Map: " . (hasPrefix ? "true" : "false"))
 
-    if (RaspadinhasMap.Has(prefix)) {
+    if (hasPrefix) {
         ; Confirmação sonora audível de sucesso (breve e aguda) - estilo caixa de supermercado
         SoundBeep(1200, 50) 
         SendInput("RASPA-" . prefix . "{Enter}")
     } else {
         SendInput(barcode . "{Enter}")
     }
+}
+
+DebugLog(msg) {s
+    FileAppend(FormatTime(, "yyyy-MM-dd HH:mm:ss") . " - " . msg . "`n", A_ScriptDir . "\debug.log")
 }
