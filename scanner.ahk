@@ -62,68 +62,44 @@ AtualizarLista(isStartup) {
     }
 }
 
-global BarcodeBuf := ""
-global LastCharTime := 0
-global ScanMode := false  ; true quando estamos a acumular dígitos rápidos (provável scan)
+global ScanStartTime := 0  ; A_TickCount do primeiro dígito do scan atual
 
-; InputHook SEM "V" — os caracteres físicos são suprimidos e NÃO chegam à aplicação.
-; Somos nós que decidimos o que enviar. Isto elimina qualquer necessidade de backspaces ou seleção.
-ih := InputHook("")
+; InputHook com "V" (Visible) — os caracteres aparecem imediatamente na app (bom para digitação humana).
+; Quando detetamos um scan completo, apagamos os carateres visíveis com Backspace e enviamos o resultado processado.
+; O Enter é marcado como EndKey suprimido (S=Suppress, E=End) — nunca chega à app diretamente.
+ih := InputHook("V")
+ih.KeyOpt("{Enter}", "SE")
+ih.OnEnd := OnScanComplete
 ih.OnChar := OnCharFn
-ih.OnKeyDown := OnKeyDownFn
 ih.Start()
 
 OnCharFn(ih, char) {
-    global BarcodeBuf, LastCharTime, ScanMode
-
-    now := A_TickCount
-    timeSinceLast := now - LastCharTime
-    LastCharTime := now
-
-    if IsDigit(char) {
-        ; Se passou demasiado tempo desde o último caracter, era digitação humana
-        if (BarcodeBuf != "" && timeSinceLast > 85) {
-            FlushBuffer()
-        }
-
-        ; Adicionar dígito ao buffer
-        BarcodeBuf .= char
-        ScanMode := (BarcodeBuf != "" && (timeSinceLast < 85 || StrLen(BarcodeBuf) == 1))
-
-        ; Se não vierem mais caracteres rápidos em 100ms, enviar o buffer (é digitação humana)
-        SetTimer(FlushBuffer, -100)
-    } else {
-        ; Caracter não numérico (exceto Enter que é tratado em OnKeyDownFn)
-        FlushBuffer()
-        SendInput(char)
-    }
+    global ScanStartTime
+    ; Registar o tempo do primeiro dígito (ih.Input ainda não tem o char atual, tem os anteriores)
+    if (ih.Input == "")
+        ScanStartTime := A_TickCount
 }
 
-OnKeyDownFn(ih, vk, sc) {
-    global BarcodeBuf, LastCharTime, ScanMode
+OnScanComplete(ih) {
+    global ScanStartTime
 
-    ; VK 0x0D = Enter / NumpadEnter
-    if (vk != 0x0D)
-        return
+    collected  := ih.Input
+    elapsed    := A_TickCount - ScanStartTime
+    ScanStartTime := 0
 
-    now := A_TickCount
-    timeSinceLast := now - LastCharTime
+    ; Reiniciar o hook imediatamente para a próxima entrada
+    ih.Start()
 
-    ; Se temos um buffer com 14 dígitos — é definitivamente um scan (independentemente de ScanMode ou timing do Enter)
-    if (BarcodeBuf != "" && StrLen(BarcodeBuf) == 14) {
-        SetTimer(FlushBuffer, 0)  ; cancelar timer de flush
-
-        ProcessCompleteScan(BarcodeBuf)
-
-        BarcodeBuf := ""
-        ScanMode := false
-        return  ; absorver o Enter do scanner
+    ; Um scanner envia 14 dígitos em < 500ms total.
+    ; Digitação humana de 14 dígitos demora muito mais tempo.
+    if (StrLen(collected) == 14 && elapsed < 500) {
+        ; Apagar os caracteres visíveis que já foram enviados (modo V)
+        SendInput("{BS " . StrLen(collected) . "}")
+        ProcessCompleteScan(collected)
+    } else {
+        ; Não é um scan — os carateres já estão visíveis, apenas enviar o Enter
+        SendInput("{Enter}")
     }
-
-    ; Se não é scan — enviar buffer acumulado + o Enter normalmente
-    FlushBuffer()
-    ScanMode := false
-    SendInput("{Enter}")
 }
 
 ; Processa um scan completo — valida tamanho e prefixo
@@ -147,16 +123,5 @@ ProcessCompleteScan(barcode) {
         ; Não é raspadinha — enviar o código de barras original + Enter
         SendInput(barcode . "{Enter}")
     }
-}
-
-; Envia os dígitos acumulados no buffer para a aplicação (digitação humana)
-FlushBuffer() {
-    global BarcodeBuf, ScanMode
-    SetTimer(FlushBuffer, 0)  ; cancelar timer pendente
-    if (BarcodeBuf != "") {
-        SendInput(BarcodeBuf)
-        BarcodeBuf := ""
-    }
-    ScanMode := false
 }
 
