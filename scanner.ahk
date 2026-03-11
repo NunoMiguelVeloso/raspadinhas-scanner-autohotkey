@@ -38,24 +38,23 @@ ParseLista(text) {
 AtualizarLista(isStartup) {
     global RaspadinhasMap, GitHubUrl, CacheFile
 
-    maxTentativas := 3          ; número de tentativas
-    pausaEntreTentativas := 3000 ; ms entre tentativas
-    timeoutMs := 5000           ; timeout de ligação/envio/resposta
+    maxTentativas := 3           ; número de tentativas
+    pausaEntreTentativas := 2000  ; ms entre tentativas
+    timeoutMs := 10000            ; timeout (10s)
+    lastErr := ""
 
     Loop maxTentativas {
         tentativa := A_Index
         try {
-            ; Tentar descarregar do GitHub com timeout
+            ; Modo SÍNCRONO (false) — mais simples e fiável que assíncrono
             req := ComObject("WinHttp.WinHttpRequest.5.1")
             req.SetTimeouts(timeoutMs, timeoutMs, timeoutMs, timeoutMs)
-            req.Open("GET", GitHubUrl, true)
-            req.Send()
-            req.WaitForResponse()
+            req.Open("GET", GitHubUrl, false)  ; false = síncrono
+            req.Send()                          ; bloqueia até ter resposta
             text := req.ResponseText
 
             tempMap := ParseLista(text)
 
-            ; Só aceitar se veio conteúdo válido (evita sobrescrever com lista corrompida)
             if (tempMap.Count == 0)
                 throw Error("Lista vazia ou inválida recebida do GitHub.")
 
@@ -70,7 +69,7 @@ AtualizarLista(isStartup) {
 
             return  ; sucesso — sair da função
         } catch as err {
-            ; Falhou esta tentativa — esperar antes de tentar outra vez (exceto na última)
+            lastErr := err.Message
             if (tentativa < maxTentativas)
                 Sleep(pausaEntreTentativas)
         }
@@ -81,14 +80,13 @@ AtualizarLista(isStartup) {
         cached := FileRead(CacheFile, "UTF-8")
         RaspadinhasMap := ParseLista(cached)
         if (isStartup)
-            TrayTip("Modo Offline", "Sem ligação ao GitHub. A usar cache local (" . RaspadinhasMap.Count . " códigos).", 3)
+            TrayTip("Modo Offline", "Cache local: " . RaspadinhasMap.Count . " códigos.`nErro: " . lastErr, 3)
         else
-            TrayTip("Erro de Atualização", "A usar cache local (" . RaspadinhasMap.Count . " códigos).", 3)
+            TrayTip("Erro de Atualização", "Cache local: " . RaspadinhasMap.Count . " códigos.`nErro: " . lastErr, 3)
     } else {
-        ; Sem cache e sem rede — arrancar com lista vazia (script continua a funcionar)
         RaspadinhasMap := Map()
         if (isStartup)
-            TrayTip("Aviso", "Sem ligação e sem cache local. A arrancar sem lista de raspadinhas.", 3)
+            TrayTip("Aviso", "Sem cache local.`nErro: " . lastErr, 3)
     }
 }
 
