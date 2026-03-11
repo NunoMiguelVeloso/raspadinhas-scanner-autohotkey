@@ -113,7 +113,7 @@ AtualizarLista(isSilent) {
 global ScanStartTime := 0
 
 ; Modo "V" (Visible): caracteres passam para a app normalmente (digitação humana imediata)
-; Quando um scan de 14 dígitos é detetado, apagamos os 14 visíveis (Backspace) e injetamos o código processado.
+; Quando um scan de 13 dígitos é detetado, apagamos os 13 visíveis (Backspace) e injetamos o código processado.
 ih := InputHook("V")
 ih.KeyOpt("{Enter}", "SE") ; Enter funciona como demilitador suprimido (nunca é enviado diretamente)
 ih.OnEnd := OnScanComplete
@@ -137,11 +137,11 @@ OnScanComplete(ih) {
     ; Reinicia imediatamente para a próxima leitura
     ih.Start()
 
-    ; Um leitor de código de barras envia os 14 números sem letras num tempo incrivelmente rápido (< 500ms)
-    isScan := (StrLen(collected) == 14 && elapsed < 500 && RegExMatch(collected, "^\d+$"))
+    ; Um leitor de código de barras envia os 13 números sem letras num tempo incrivelmente rápido (< 500ms)
+    isScan := (StrLen(collected) == 13 && elapsed < 500 && RegExMatch(collected, "^\d+$"))
 
     if (isScan) {
-        ; Apagar da app os 14 caracteres que apareceram visíveis pelo modo "V"
+        ; Apagar da app os 13 caracteres que apareceram visíveis pelo modo "V"
         SendInput("{BS " . StrLen(collected) . "}")
         ProcessCompleteScan(collected)
     } else {
@@ -154,7 +154,7 @@ ProcessCompleteScan(barcode) {
     global RaspadinhasMap
 
     ; Segurança passiva - confirmar o tamanho
-    if (StrLen(barcode) != 14) {
+    if (StrLen(barcode) != 13) {
         SendInput(barcode . "{Enter}")
         return
     }
