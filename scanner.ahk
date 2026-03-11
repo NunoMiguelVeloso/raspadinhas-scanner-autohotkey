@@ -64,6 +64,9 @@ AtualizarLista(isStartup) {
 
 global ScanStartTime := 0  ; A_TickCount do primeiro dígito do scan atual
 
+; DEBUG: Muda para false para desativar os tooltips de diagnóstico
+global DEBUG := true
+
 ; InputHook com "V" (Visible) — os caracteres aparecem imediatamente na app (bom para digitação humana).
 ; Quando detetamos um scan completo, apagamos os carateres visíveis com Backspace e enviamos o resultado processado.
 ; O Enter é marcado como EndKey suprimido (S=Suppress, E=End) — nunca chega à app diretamente.
@@ -75,13 +78,14 @@ ih.Start()
 
 OnCharFn(ih, char) {
     global ScanStartTime
-    ; Registar o tempo do primeiro dígito (ih.Input ainda não tem o char atual, tem os anteriores)
-    if (ih.Input == "")
+    ; NOTA: OnChar é chamado DEPOIS do char ser adicionado ao ih.Input.
+    ; Então o primeiro char faz ih.Input ter comprimento 1, não 0.
+    if (StrLen(ih.Input) == 1)
         ScanStartTime := A_TickCount
 }
 
 OnScanComplete(ih) {
-    global ScanStartTime
+    global ScanStartTime, DEBUG
 
     collected  := ih.Input
     elapsed    := A_TickCount - ScanStartTime
@@ -90,9 +94,17 @@ OnScanComplete(ih) {
     ; Reiniciar o hook imediatamente para a próxima entrada
     ih.Start()
 
-    ; Um scanner envia 14 dígitos em < 500ms total.
-    ; Digitação humana de 14 dígitos demora muito mais tempo.
-    if (StrLen(collected) == 14 && elapsed < 500) {
+    isScan := (StrLen(collected) == 14 && elapsed < 500)
+
+    if (DEBUG) {
+        ToolTip("SCAN: " . (isScan ? "SIM" : "NÃO")
+            . "`nCódigo: [" . collected . "]"
+            . "`nLen: " . StrLen(collected)
+            . "`nElapsed: " . elapsed . "ms")
+        SetTimer(() => ToolTip(), -3000)  ; esconder tooltip após 3s
+    }
+
+    if (isScan) {
         ; Apagar os caracteres visíveis que já foram enviados (modo V)
         SendInput("{BS " . StrLen(collected) . "}")
         ProcessCompleteScan(collected)
