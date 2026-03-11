@@ -100,7 +100,8 @@ AtualizarLista(isStartup) {
             if (tempMap.Count == 0)
                 throw Error("Lista vazia (0 códigos de 3 dígitos encontrados).")
 
-            FileDelete(CacheFile)
+            if FileExist(CacheFile)
+                FileDelete(CacheFile)
             FileAppend(text, CacheFile, "UTF-8")
             DebugLog("  Cache guardado: " . CacheFile)
 
