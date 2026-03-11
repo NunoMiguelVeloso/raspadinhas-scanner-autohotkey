@@ -64,86 +64,100 @@ AtualizarLista(isStartup) {
 
 global BarcodeBuf := ""
 global LastCharTime := 0
-global IgnoreNextEnter := false
+global ScanMode := false  ; true quando estamos a acumular dígitos rápidos (provável scan)
 
-; Create a visible InputHook. "V" means keystrokes are passed to the active window normally.
-ih := InputHook("V")
+; InputHook SEM "V" — os caracteres físicos são suprimidos e NÃO chegam à aplicação.
+; Somos nós que decidimos o que enviar. Isto elimina qualquer necessidade de backspaces ou seleção.
+ih := InputHook("")
 ih.OnChar := OnCharFn
+ih.OnKeyDown := OnKeyDownFn
 ih.Start()
 
 OnCharFn(ih, char) {
-    global BarcodeBuf, LastCharTime
-    
-    ; Barcode scanners send keystrokes extremely quickly (usually 5-20ms per character).
-    ; Se o tempo desde a última tecla for maior que 85ms, provavelmente é digitação humana.
-    ; Tolerância aumentada para evitar falhas com leitores de código de barras mais lentos.
-    if (A_TickCount - LastCharTime > 85) {
-        BarcodeBuf := ""
-    }
-    LastCharTime := A_TickCount
-    
-    ; Only append digits to our buffer
+    global BarcodeBuf, LastCharTime, ScanMode
+
+    now := A_TickCount
+    timeSinceLast := now - LastCharTime
+    LastCharTime := now
+
     if IsDigit(char) {
-        BarcodeBuf .= char
-        
-        ; When exactly 14 rapidly typed digits are detected
-        if (StrLen(BarcodeBuf) == 14) {
-            
-            ; Get the first 3 digits (slicing all digits after position 3)
-            prefix := SubStr(BarcodeBuf, 1, 3)
-            
-            ; Check if the 3 digits belong to our list
-            if (RaspadinhasMap.Has(prefix)) {
-                
-                ; Enable a flag to absorb the natural Enter keystroke from the scanner
-                global IgnoreNextEnter := true
-                SetTimer(ClearIgnoreEnter, -500) ; disable flag after 500ms
-                
-                ; Substituição via clipboard (mais seguro que backspaces individuais)
-                ; 1. Guardar o clipboard original
-                oldClip := ClipboardAll()
-                
-                ; 2. Selecionar os 14 caracteres que o leitor acabou de escrever
-                SendEvent("{Left 14}{Shift Down}{Right 14}{Shift Up}")
-                Sleep(30)
-                
-                ; 3. Colocar o texto de substituição no clipboard e colar
-                A_Clipboard := "RASPA-" . prefix
-                SendEvent("^v")
-                Sleep(30)
-                
-                ; 4. Enviar o Enter
-                SendEvent("{Enter}")
-                
-                ; 5. Restaurar o clipboard original
-                Sleep(50)
-                A_Clipboard := oldClip
-                oldClip := ""
-                
-                ; Show a push notification (TrayTip)
-                TrayTip("Raspadinha Identificada", "Código " prefix " detetado e substituído.", 1)
-            }
-            ; If it doesn't match, we do nothing. The "V" InputHook naturally allows
-            ; the original barcode to stay as it was typed.
-            
-            ; Reset buffer after a successful 14-digit detection
-            BarcodeBuf := "" 
+        ; Se passou demasiado tempo desde o último caracter, era digitação humana
+        if (BarcodeBuf != "" && timeSinceLast > 85) {
+            FlushBuffer()
         }
+
+        ; Adicionar dígito ao buffer
+        BarcodeBuf .= char
+        ScanMode := (BarcodeBuf != "" && (timeSinceLast < 85 || StrLen(BarcodeBuf) == 1))
+
+        ; Se não vierem mais caracteres rápidos em 100ms, enviar o buffer (é digitação humana)
+        SetTimer(FlushBuffer, -100)
     } else {
-        ; Reset the buffer if a non-digit is typed (e.g. letters)
-        BarcodeBuf := ""
+        ; Caracter não numérico (exceto Enter que é tratado em OnKeyDownFn)
+        FlushBuffer()
+        SendInput(char)
     }
 }
 
-ClearIgnoreEnter() {
-    global IgnoreNextEnter := false
+OnKeyDownFn(ih, vk, sc) {
+    global BarcodeBuf, LastCharTime, ScanMode
+
+    ; VK 0x0D = Enter / NumpadEnter
+    if (vk != 0x0D)
+        return
+
+    now := A_TickCount
+    timeSinceLast := now - LastCharTime
+
+    ; Se temos um buffer e o Enter veio rápido — é o fim de um scan
+    if (BarcodeBuf != "" && ScanMode && timeSinceLast < 85) {
+        SetTimer(FlushBuffer, 0)  ; cancelar timer de flush
+
+        ProcessCompleteScan(BarcodeBuf)
+
+        BarcodeBuf := ""
+        ScanMode := false
+        return  ; absorver o Enter do scanner
+    }
+
+    ; Se não é scan — enviar buffer acumulado + o Enter normalmente
+    FlushBuffer()
+    ScanMode := false
+    SendInput("{Enter}")
 }
 
-#HotIf IgnoreNextEnter
-$Enter::
-$NumpadEnter::
-{
-    global IgnoreNextEnter := false
-    ; Absorve o Enter físico do leitor para evitar duplicação do Enter
+; Processa um scan completo — valida tamanho e prefixo
+ProcessCompleteScan(barcode) {
+    global RaspadinhasMap
+
+    ; 1. Verificar tamanho esperado (14 dígitos)
+    if (StrLen(barcode) != 14) {
+        ; Não tem o tamanho esperado — enviar tal como foi lido + Enter
+        SendInput(barcode . "{Enter}")
+        return
+    }
+
+    ; 2. Verificar prefixo na lista de raspadinhas
+    prefix := SubStr(barcode, 1, 3)
+
+    if (RaspadinhasMap.Has(prefix)) {
+        ; É raspadinha! Enviar apenas o código transformado
+        SendInput("RASPA-" . prefix . "{Enter}")
+        TrayTip("Raspadinha Identificada", "Código " . prefix . " detetado e substituído.", 1)
+    } else {
+        ; Não é raspadinha — enviar o código de barras original + Enter
+        SendInput(barcode . "{Enter}")
+    }
 }
-#HotIf
+
+; Envia os dígitos acumulados no buffer para a aplicação (digitação humana)
+FlushBuffer() {
+    global BarcodeBuf, ScanMode
+    SetTimer(FlushBuffer, 0)  ; cancelar timer pendente
+    if (BarcodeBuf != "") {
+        SendInput(BarcodeBuf)
+        BarcodeBuf := ""
+    }
+    ScanMode := false
+}
+
