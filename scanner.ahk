@@ -1,12 +1,15 @@
 #Requires AutoHotkey v2.0
 #SingleInstance Force
 
-; ─── Configurações ────────────────────────────────────────────────────────────
+TraySetIcon(A_ScriptDir . "\scanner.ico")
+
+; --- Configurações ---
 global GitHubUrl  := "https://raw.githubusercontent.com/NunoMiguelVeloso/raspadinhas-scanner-autohotkey/main/raspadinhas.txt"
 global CacheFile  := A_ScriptDir . "\raspadinhas_cache.txt"
+global PrefixLength := 3
 global RaspadinhasMap := Map()
 
-; ─── Menu da Tray ─────────────────────────────────────────────────────────────
+; --- Menu da Tray ---
 A_TrayMenu.Add()  ; Separador visual
 A_TrayMenu.Add("Ver Estado da Lista", MostrarEstado)
 A_TrayMenu.Add("Atualizar Lista Agora", AtualizarListaManual)
@@ -28,7 +31,7 @@ MostrarEstado(ItemName, ItemPos, MyMenu) {
     MsgBox(msg, "Estado do Scanner", 64)
 }
 
-; ─── Arranque e Atualização Automática ────────────────────────────────────────
+; --- Arranque e Atualização Automática ---
 AtualizarLista(true)  ; Atualização inicial no arranque (silenciosa se sucesso)
 SetTimer(AtualizarListaAuto, 600000)  ; 10 minutos (600000 ms)
 
@@ -40,12 +43,13 @@ AtualizarListaAuto() {
     AtualizarLista(true) ; Auto updates também devem ser silenciosos (tratados como startup)
 }
 
-; ─── Lógica de Download e Cache ───────────────────────────────────────────────
+; --- Lógica de Download e Cache ---
 ParseLista(text) {
+    global PrefixLength
     m := Map()
     Loop Parse, text, "`n", "`r" {
         val := RegExReplace(A_LoopField, "\D", "")
-        if (StrLen(val) == 3)
+        if (StrLen(val) == PrefixLength)
             m[val] := true
     }
     return m
@@ -79,9 +83,13 @@ AtualizarLista(isSilent) {
                 throw Error("Lista vazia ou inválida.")
 
             ; Guardar num ficheiro local para uso offline futuro
-            if FileExist(CacheFile)
-                FileDelete(CacheFile)
-            FileAppend(req.ResponseText, CacheFile, "UTF-8")
+            try {
+                if FileExist(CacheFile)
+                    FileDelete(CacheFile)
+                FileAppend(req.ResponseText, CacheFile, "UTF-8")
+            } catch {
+                ; Ignorar erros de escrita no cache para não falhar a atualização em memória
+            }
 
             RaspadinhasMap := tempMap
 
@@ -109,7 +117,7 @@ AtualizarLista(isSilent) {
     }
 }
 
-; ─── Scanner (InputHook) ──────────────────────────────────────────────────────
+; --- Scanner (InputHook) ---
 global ScanStartTime := 0
 
 ; Modo "V" (Visible): caracteres passam para a app normalmente (digitação humana imediata)
@@ -139,8 +147,6 @@ OnScanComplete(ih) {
 
     ; Um leitor de código de barras envia os 10 números sem letras num tempo incrivelmente rápido (< 500ms)
     isScan := (StrLen(collected) == 10 && elapsed < 500 && RegExMatch(collected, "^\d+$"))
-    
-    DebugLog("OnScanComplete - Input: '" . collected . "', Length: " . StrLen(collected) . ", Elapsed: " . elapsed . "ms, isScan: " . (isScan ? "true" : "false"))
 
     if (isScan) {
         ; Apagar da app os 10 caracteres que apareceram visíveis pelo modo "V"
@@ -155,16 +161,16 @@ OnScanComplete(ih) {
 ProcessCompleteScan(barcode) {
     global RaspadinhasMap
 
+    global PrefixLength
+
     ; Segurança passiva - confirmar o tamanho
     if (StrLen(barcode) != 10) {
         SendInput(barcode . "{Enter}")
         return
     }
 
-    prefix := SubStr(barcode, 1, 3)
+    prefix := SubStr(barcode, 1, PrefixLength)
     hasPrefix := RaspadinhasMap.Has(prefix)
-    
-    DebugLog("ProcessCompleteScan - Barcode: '" . barcode . "', Prefix: '" . prefix . "', In Map: " . (hasPrefix ? "true" : "false"))
 
     if (hasPrefix) {
         ; Confirmação sonora audível de sucesso (breve e aguda) - estilo caixa de supermercado
@@ -173,8 +179,4 @@ ProcessCompleteScan(barcode) {
     } else {
         SendInput(barcode . "{Enter}")
     }
-}
-
-DebugLog(msg) {
-    FileAppend(FormatTime(, "yyyy-MM-dd HH:mm:ss") . " - " . msg . "`n", A_ScriptDir . "\debug.log")
 }
