@@ -2,8 +2,8 @@
 #SingleInstance Force
 
 ; --- Configurações ---
-global GitHubUrl  := "https://raw.githubusercontent.com/NunoMiguelVeloso/raspadinhas-scanner-autohotkey/main/raspadinhas.txt"
-global CacheFile  := A_ScriptDir . "\raspadinhas_cache.txt"
+global GitHubUrl  := "https://raw.githubusercontent.com/NunoMiguelVeloso/raspadinhas-scanner-autohotkey/main/prefixes.txt"
+global CacheFile  := A_ScriptDir . "\prefixes_cache.txt"
 global PrefixLength := 3
 global RaspadinhasMap := Map()
 

@@ -14,7 +14,7 @@ Um script AutoHotkey v2 robusto para intercetar o input de leitores de código d
 - **Audible Feedback:** Emite um breve sinal sonoro (beep áudio) simulando o som clássico de caixa de supermercado sempre que uma raspadinha é processada com sucesso.
 - **Resiliência de Rede & Modo Offline:**
   - A lista de prefixos válidos é atualizada automaticamente a cada 10 minutos em background, sem interromper o trabalho.
-  - Cria um cache local (`raspadinhas_cache.txt`) a cada download bem-sucedido.
+  - Cria um cache local (`prefixes_cache.txt`) a cada download bem-sucedido.
   - Se o tablet perder a ligação à internet, o script arranca e funciona normalmente recorrendo ao último ficheiro de cache guardado.
   - Operação 100% silenciosa: Não mostra popups de erro exceto se forções uma atualização manual ou no arranque se não existir nem internet nem cache.
 - **Menu Integrado (Tray):**
@@ -24,11 +24,11 @@ Um script AutoHotkey v2 robusto para intercetar o input de leitores de código d
 ## 📦 Instalação e Utilização
 
 1. **Requisitos:** Instalar o [AutoHotkey v2](https://www.autohotkey.com/v2/).
-2. **Download:** Descarregar o ficheiro `scanner.ahk` para o computador/tablet.
-3. **Execução:** Fazer duplo-clique no ficheiro `scanner.ahk`.
+2. **Download:** Descarregar o ficheiro `RaspaScanner.ahk` para o computador/tablet.
+3. **Execução:** Fazer duplo-clique no ficheiro `RaspaScanner.ahk`.
 4. (Opcional) **Arranque Automático:** Para o script iniciar sempre que o Windows liga:
    - Pressionar `Win + R`, escrever `shell:startup` e dar Enter.
-   - Colocar um atalho para o `scanner.ahk` dentro dessa pasta.
+   - Colocar um atalho para o `RaspaScanner.ahk` dentro dessa pasta.
 
 ## 🛠 Como Funciona a Lógica de Leitura
 
