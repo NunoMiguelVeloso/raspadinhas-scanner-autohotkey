@@ -23,12 +23,20 @@ Um script AutoHotkey v2 robusto para intercetar o input de leitores de código d
 
 ## 📦 Instalação e Utilização
 
+### Opção 1: Executável Standalone (Produção)
+*Recomendado para uso diário pois não requer instalação de programas adicionais.*
+1. **Download:** Descarregar o ficheiro `RaspaScanner.exe`.
+2. **Execução:** Fazer duplo-clique no `RaspaScanner.exe`.
+
+### Opção 2: Script Fonte (Desenvolvimento)
 1. **Requisitos:** Instalar o [AutoHotkey v2](https://www.autohotkey.com/v2/).
-2. **Download:** Descarregar o ficheiro `RaspaScanner.ahk` para o computador/tablet.
-3. **Execução:** Fazer duplo-clique no ficheiro `RaspaScanner.ahk`.
-4. (Opcional) **Arranque Automático:** Para o script iniciar sempre que o Windows liga:
-   - Pressionar `Win + R`, escrever `shell:startup` e dar Enter.
-   - Colocar um atalho para o `RaspaScanner.ahk` dentro dessa pasta.
+2. **Download:** Descarregar o ficheiro `RaspaScanner.ahk`.
+3. **Execução:** Fazer duplo-clique no `RaspaScanner.ahk`.
+
+### ⚙️ Arranque Automático
+Para o scanner iniciar sempre que o Windows liga:
+1. Pressionar `Win + R`, escrever `shell:startup` e dar Enter.
+2. Colocar um atalho para o `RaspaScanner.exe` (ou `RaspaScanner.ahk`) dentro dessa pasta.
 
 ## 🛠 Como Funciona a Lógica de Leitura
 
