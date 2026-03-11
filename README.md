@@ -4,10 +4,10 @@ Um script AutoHotkey v2 robusto para intercetar o input de leitores de código d
 
 ## 🚀 Funcionalidades
 
-- **Deteção Inteligente de Scanners:** Utiliza a API nativa `InputHook` do AutoHotkey para distinguir com 100% de precisão entre a digitação manual rápida e a leitura instantânea de um scanner de código de barras (< 500ms para 13 dígitos).
+- **Deteção Inteligente de Scanners:** Utiliza a API nativa `InputHook` do AutoHotkey para distinguir com 100% de precisão entre a digitação manual rápida e a leitura instantânea de um scanner de código de barras (< 500ms para 10 dígitos).
 - **Digitação Humana Transparente:** Os caracteres digitados manualmente pelo operador aparecem imediatamente no ecrã (modo "Visible"). Não há bloqueios nem atrasos na escrita normal.
 - **Processamento Automático:**
-  - Valida se o código tem exatamente 13 dígitos numéricos.
+  - Valida se o código tem exatamente 10 dígitos numéricos.
   - Verifica assincronamente os primeiros 3 dígitos numa lista centralizada no GitHub.
   - Se for uma raspadinha válida, apaga instantaneamente o código original do ecrã e injeta o formato processado (ex: `RASPA-XXX`).
   - Se não for, envia o código de barras original inalterado.
@@ -38,7 +38,7 @@ A nova arquitetura funciona da seguinte forma:
 1. O `InputHook` captura tudo e permite que chegue à app ("V").
 2. A tecla `Enter` do scanner é intercetada como "EndKey". Ela não chega à app.
 3. Quando o `Enter` ocorre, o script verifica o que foi reunido na memória do Hook até agora.
-4. Se foram **exatamente 13 dígitos submetidos em menos de 500 milésimos de segundo**, o script apaga o que foi teclado visivelmente recorrendo a *backspaces*, processa a regra das raspadinhas e injeta o resultado final seguido do seu próprio `Enter`.
+4. Se foram **exatamente 10 dígitos submetidos em menos de 500 milésimos de segundo**, o script apaga o que foi teclado visivelmente recorrendo a *backspaces*, processa a regra das raspadinhas e injeta o resultado final seguido do seu próprio `Enter`.
 5. Se foi um *input* manual, ele percebe pelo tempo de viagem demorado (ou comprimento do texto) que não foi o leitor laser e não apaga nada, apenas emite o `Enter` em falta.
 
 ## 📝 A Lista de Códigos
