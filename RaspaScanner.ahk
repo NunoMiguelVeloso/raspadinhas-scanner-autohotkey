@@ -150,9 +150,8 @@ OnScanComplete(ih) {
         ; Apagar da app os 10 caracteres que apareceram visíveis pelo modo "V"
         SendInput("{BS " . StrLen(collected) . "}")
         ProcessCompleteScan(collected)
-    } else {
-        ; Entrada manual finalizada. Os caracteres já estão visíveis na app, precisamos apenas do Enter que foi suprimido.
-        SendInput("{Enter}")
+        ; Entrada manual finalizada. Os caracteres já estão visíveis na app, precisamos apenas do "Enter" (LF no teu scanner).
+        SendInput("`n")
     }
 }
 
@@ -163,7 +162,7 @@ ProcessCompleteScan(barcode) {
 
     ; Segurança passiva - confirmar o tamanho
     if (StrLen(barcode) != 10) {
-        SendInput(barcode . "{Enter}")
+        SendInput(barcode . "`n")
         return
     }
 
@@ -173,8 +172,12 @@ ProcessCompleteScan(barcode) {
     if (hasPrefix) {
         ; Confirmação sonora audível de sucesso (breve e aguda) - estilo caixa de supermercado
         SoundBeep(1200, 50) 
-        SendInput("RASPA-" . prefix . "{Enter}")
+        
+        ; Pequena pausa para o browser processar os Backspaces antes de injetar o novo código
+        Sleep(50) 
+        
+        SendInput("RASPA-" . prefix . "`n")
     } else {
-        SendInput(barcode . "{Enter}")
+        SendInput(barcode . "`n")
     }
 }
